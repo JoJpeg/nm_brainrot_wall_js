@@ -1,0 +1,9 @@
+{
+  "name": "brainrot_wall_js",
+  "version": "1.0.0",
+  "description": "brainrot new media 2025",
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js"
+}

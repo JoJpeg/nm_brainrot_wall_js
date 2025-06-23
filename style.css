@@ -1,0 +1,181 @@
+/* Ensure html and body are scrollable. This is the MOST IMPORTANT part for window.scrollTo */
+html, body {
+    overflow-y: auto; /* Allows vertical scrolling if content exceeds viewport height */
+    /* overflow-x: hidden; */ /* Optional: if you want to prevent horizontal scrolling */
+}
+
+body {
+    font-family: sans-serif;
+    margin: 0;
+    /* padding: 2px; */ /* Consider removing or using margin on a child for specific spacing. Padding on body can sometimes cause unexpected scrollbars if content is exactly viewport height. */
+    background-color: #333;
+    color: #f0f0f0;
+    box-sizing: border-box;
+}
+
+*, *::before, *::after {
+    box-sizing: inherit;
+}
+
+#video-container-wrapper {
+    width: 95%; /* Etwas breiter für mehr Platz */
+    max-width: 1800px;
+    margin: 5px auto; /* This creates the space around your main content area */
+}
+
+/* Das Masonry-Grid (#video-container in your JS) */
+.grid { /* This corresponds to your #video-container element */
+    position: relative; /* Wichtig für absolute Positionierung der Items */
+    width: 100%; /* Stelle sicher, dass der Grid-Container die Breite des Wrappers ausnutzt */
+    /* min-height: 100vh; */ /*
+        This ensures the container is at least the viewport height.
+        Your JavaScript sets the height dynamically (`videoContainerElement.style.height = totalContentHeight + 'px'`).
+        If `totalContentHeight` becomes greater than 100vh, the JS height will take precedence.
+        If `totalContentHeight` is less, this min-height will apply.
+        This is generally okay, but the primary driver for scrolling will be when `totalContentHeight` (set by JS)
+        makes the overall page content taller than the viewport.
+        For auto-scrolling to be noticeable, `totalContentHeight` needs to grow sufficiently.
+    */
+}
+
+/* Die Grid-Items (.grid-item DIVs) */
+.grid-item {
+    /* Breite wird von JavaScript gesetzt für Masonry-Layout */
+    /* margin-bottom: 10px; */ /*
+        Your JS calculates item positions and uses `gutterSize` for spacing.
+        Since items are `position: absolute`, this margin-bottom won't affect the layout
+        of other absolutely positioned items. The `gutterSize` in JS handles the vertical gap.
+        It's generally harmless here but redundant for spacing between items.
+    */
+    background-color: #1a1a1a; /* Dunklerer Hintergrund für das Item selbst */
+    overflow: hidden; /* Verhindert, dass übergroße Inhalte das Layout sprengen. Good for items. */
+    position: absolute; /* Wird von JavaScript für virtuelles Rendering gesetzt */
+    border-radius: 8px; /* Schöne abgerundete Ecken */
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); /* Leichter Schatten */
+     /* Smooth hover-Effekt */
+}
+ 
+
+/* Das eigentliche <video>-Element innerhalb des .grid-item */
+.video-element-class {
+    display: block; /* Wichtig, damit es die Breite des Wrappers (.grid-item) annimmt */
+    width: 100%;    /* Video füllt die Breite des .grid-item */
+    height: auto;   /* Höhe passt sich automatisch an das Seitenverhältnis an */
+}
+
+/* Das eigentliche <img>-Element innerhalb des .grid-item */
+.image-element-class {
+    display: block; /* Wichtig, damit es die Breite des Wrappers (.grid-item) annimmt */
+    width: 100%;    /* Bild füllt die Breite des .grid-item */
+    height: auto;   /* Höhe passt sich automatisch an das Seitenverhältnis an */
+}
+
+/* Einklappbare Steuerungsbox */
+.control-panel {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: rgba(26, 26, 26, 0.95);
+    border: 1px solid #444;
+    border-radius: 10px;
+    padding: 15px;
+    z-index: 1000;
+    max-width: 300px;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    transition: all 0.3s ease;
+}
+
+.control-panel.collapsed {
+    transform: translateX(calc(100% + 20px)); /* When collapsed, leave 50px visible (toggle + padding) */
+    /* Consider making this more robust if toggle size changes */
+}
+
+/* Ensure hover works in both states to expand/keep expanded */
+/* .control-panel:not(.collapsed):hover,
+.control-panel.collapsed:hover { 
+    transform: translateX(0);
+} */
+
+
+/* .control-panel:not(.collapsed):hover,
+.control-panel.collapsed:hover { 
+    transform: translateX(0);
+} */
+
+.control-toggle {
+    position: absolute;
+    /* Adjust left based on how much you want it to stick out when panel is collapsed */
+    left: -40px; /* This works if the collapsed transform is calc(100% - (toggle_width + some_padding)) */
+    top: 10px; /* Align with top of panel content, or use 50% and transform for vertical center */
+    /* transform: translateY(-50%); */ /* Use if top is 50% */
+    background: rgba(40, 40, 40, 0.95); /* Slightly different from panel for visual separation */
+    border: 1px solid #555;
+    border-right: none; /* No border on the side touching the panel */
+    border-radius: 8px 0 0 8px;
+    padding: 10px 8px;
+    cursor: pointer;
+    color: #f0f0f0;
+    font-size: 18px;
+    user-select: none;
+    transition: all 0.3s ease;
+}
+
+.control-toggle:hover {
+    background: rgba(60, 60, 60, 0.95);
+}
+
+.control-panel h3 {
+    margin: 0 0 15px 0;
+    color: #f0f0f0;
+    font-size: 16px;
+    border-bottom: 1px solid #444;
+    padding-bottom: 8px;
+}
+
+.control-group {
+    margin-bottom: 15px;
+}
+
+.control-group label {
+    display: block;
+    margin-bottom: 5px;
+    color: #ccc;
+    font-size: 14px;
+}
+
+.control-panel button {
+    background: #0070f3;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-right: 5px;
+    margin-bottom: 5px;
+    font-size: 12px;
+    transition: background 0.2s ease;
+}
+
+.control-panel button:hover {
+    background: #0051a3;
+}
+
+.control-panel button.danger {
+    background: #dc3545;
+}
+
+.control-panel button.danger:hover {
+    background: #a71d2a;
+}
+
+.control-panel input[type="range"] {
+    width: 100%;
+    margin: 5px 0;
+}
+
+.speed-display {
+    font-size: 12px;
+    color: #999;
+    text-align: center;
+}
