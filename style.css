@@ -89,6 +89,7 @@ body {
 .control-panel.collapsed {
     transform: translateX(calc(100% + 20px)); /* When collapsed, leave 50px visible (toggle + padding) */
     /* Consider making this more robust if toggle size changes */
+    box-shadow: 0 0px 0px rgba(0, 0, 0, 0.3);
 }
 
 /* Ensure hover works in both states to expand/keep expanded */

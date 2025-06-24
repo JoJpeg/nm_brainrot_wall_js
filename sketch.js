@@ -1,8 +1,7 @@
-// sketch.js
-
 // Globale Variablen
 let inputButton;
 let videoContainerElement;
+let controlPanel; // Reference to control panel for keyboard toggle
 let isFirstSelection = true;
 
 // Einfache Variablen für automatisches Scrolling
@@ -12,6 +11,8 @@ let scrollSpeed = 1;
 let viewportHeight;
 let scrollOffset = 0;
 let autoScrollEnabled = false;
+let popInPx = 0; // Pixel, um die Items vor dem Scrollen "hereinpoppen" sollen
+let popOutPx = 200; // Pixel, um die Items nach dem Scrollen "herauspoppen" sollen
 
 // Masonry-Layout Variablen
 let columnCount = 5;
@@ -19,7 +20,7 @@ let columnWidth = 100;
 let columnHeights = [];
 let gutterSize = 10;
 let totalContentHeight = 0;
-let renderBuffer = 800; // Items further than this above viewport top are candidates for moving
+let renderBuffer = 0; // Items further than this above viewport top are candidates for moving
 
 let lastLogFrame = 0;
 const logInterval = 60; // Log draw info approx every second
@@ -53,11 +54,23 @@ function setup() {
     console.log("SETUP: p5.js Sketch initialisiert. Bitte Videos auswählen.");
 }
 
+// Handle keyboard input
+function keyPressed() {
+    // Toggle control panel when Space key is pressed
+    if (key === ' ') {
+        if (controlPanel) {
+            controlPanel.toggleClass('collapsed');
+        }
+        // Prevent default space bar behavior (scrolling)
+        return false;
+    }
+}
+
 function createControlPanel() {
-    let controlPanel = createDiv('');
+    controlPanel = createDiv('');
     controlPanel.addClass('control-panel collapsed');
-    let toggleBtn = createDiv('⚙️').addClass('control-toggle').parent(controlPanel);
-    toggleBtn.mousePressed(() => controlPanel.toggleClass('collapsed'));
+    // let toggleBtn = createDiv('⚙️').addClass('control-toggle').parent(controlPanel);
+    // toggleBtn.mousePressed(() => controlPanel.toggleClass('collapsed'));
     createElement('h3', 'Brainrot Wall Controls').parent(controlPanel);
     let fileGroup = createDiv('').addClass('control-group').parent(controlPanel);
     createElement('label', 'Medien-Ordner auswählen:').parent(fileGroup);
@@ -73,10 +86,37 @@ function createControlPanel() {
     let speedSlider = createSlider(0.5, 5, scrollSpeed, 0.1).parent(speedGroup);
     speedSlider.input(() => { scrollSpeed = speedSlider.value(); updateSpeedDisplay(); });
     createDiv(`${scrollSpeed.toFixed(1)}x`).addClass('speed-display').parent(speedGroup).id('speed-display');
+   
+    //pop in and pop out settings
+    let popSettingsGroup = createDiv('').addClass('control-group').parent(controlPanel);
+    createElement('label', 'Pop-In/Out Einstellungen:').parent(popSettingsGroup);
+    let popOutSlider = createSlider(0, 500, popOutPx,
+        10).parent(popSettingsGroup);
+    popOutSlider.input(() => {
+        popOutPx = popOutSlider.value();
+        updatePopLabels(); // Update the display label immediately
+    });
+    createDiv(`Pop-Out: ${popOutPx}px`).addClass('pop-out-display').parent(popSettingsGroup).id('pop-out-display'); 
+    let popInSlider = createSlider(0, 500, popInPx,
+        10).parent(popSettingsGroup);
+    popInSlider.input(() => {
+        popInPx = popInSlider.value();
+        updatePopLabels(); // Update the display label immediately
+    });
+    createDiv(`Pop-In: ${popInPx}px`).addClass('pop-in-display').parent(popSettingsGroup).id('pop-in-display');
+    
     let clearGroup = createDiv('').addClass('control-group').parent(controlPanel);
     createButton('🗑️ Alle löschen').addClass('danger').parent(clearGroup).mousePressed(clearAllVideos);
-}
 
+
+}
+function updatePopLabels(){
+        //update pop-in and pop-out labels
+        let popInDisplay = select('#pop-in-display');
+        if (popInDisplay) popInDisplay.html(`Pop-In: ${popInPx}px`);
+        let popOutDisplay = select('#pop-out-display');
+        if (popOutDisplay) popOutDisplay.html(`Pop-Out: ${popOutPx}px`);
+}
 function updateSpeedDisplay() {
     let display = select('#speed-display');
     if (display) display.html(`${scrollSpeed.toFixed(1)}x`);
@@ -105,6 +145,9 @@ function updateLayoutDimensions() {
 
 function toggleAutoScroll() {
     autoScrollEnabled = !autoScrollEnabled;
+    if(!autoScrollEnabled){
+        changeAudioVolume('muteAll'); 
+    }
     let button = select('#scroll-button');
     if (button) {
         if (autoScrollEnabled) {
@@ -189,15 +232,7 @@ function draw() {
         window.scrollTo(0, scrollOffset);
         optimizeVideoPlayback();
         moveItemsForEndlessScroll();
-
-        if (frameCount % logInterval === 0 && frameCount !== lastLogFrame) {
-            console.log(
-                `DRAW[F:${frameCount}]: scrollOffset=${scrollOffset.toFixed(0)}, totalContentHeight=${totalContentHeight.toFixed(0)}, ` +
-                `maxColH=${Math.max(0, ...columnHeights).toFixed(0)}, ` +
-                `container.style.height=${videoContainerElement ? videoContainerElement.style.height : 'N/A'}`
-            );
-            lastLogFrame = frameCount;
-        }
+        changeAudioVolume('centerY'); // Adjust volume based on item position
     }
 }
 
@@ -273,6 +308,33 @@ function createMediaItem(nativeFileObject) {
     videoContainerElement.appendChild(gridItemDiv.elt);
 }
 
+function applyAudioPanning(item) {
+    try {
+        // Create audio context and nodes if they don't exist
+        if (!item.audioContext) {
+            item.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            item.audioSource = item.audioContext.createMediaElementSource(item.mediaElement);
+            item.stereoPanner = item.audioContext.createStereoPanner();
+            
+            // Connect the audio graph
+            item.audioSource.connect(item.stereoPanner);
+            item.stereoPanner.connect(item.audioContext.destination);
+        }
+        
+        // Calculate pan value based on horizontal position
+        let itemCenterX = item.x + (item.mediaElement.offsetWidth / 2);
+        let viewportCenterX = window.innerWidth / 2;
+        let pan = (itemCenterX - viewportCenterX) / (window.innerWidth / 2);
+        pan = Math.max(-1, Math.min(1, pan)); // Clamp pan between -1 and 1
+        
+        // Apply the panning
+        item.stereoPanner.pan.value = pan;
+        
+    } catch (error) {
+        console.warn('Audio panning not supported or failed:', error);
+    }
+}
+
 function updateItemHeight(mediaItem, newHeight) {
     if (!mediaItem || newHeight <= 0 || !mediaItem.domElement) return;
     let oldItemHeight = mediaItem.height;
@@ -298,6 +360,34 @@ function updateContainerHeight() {
     if (videoContainerElement) {
         videoContainerElement.style.height = totalContentHeight + 'px';
     }
+}
+
+function changeAudioVolume(style) {
+    // style: 'centerY', 'onlyOne', 'muteAll'
+    if (!mediaItems || mediaItems.length === 0) return;
+    
+    mediaItems.forEach(item => {    
+        if (item.mediaElement && item.isVideo) {
+            
+            if (style === 'centerY') {
+                // Check if item is in the center of the viewport
+                let itemCenterY = item.y + (item.height / 2);
+                let viewportCenterY = scrollOffset + (viewportHeight / 2);
+                let distanceFromCenter = Math.abs(itemCenterY - viewportCenterY);
+                let distanceNormalized = distanceFromCenter / (viewportHeight / 2) * 2; // Normalize to [0, 1]
+                let vol = 1 - distanceNormalized; // Closer to ce nter = louder
+                if(vol < 0) vol = 0; // Clamp volume to [0, 1]
+                item.mediaElement.volume = vol; // Full volume for items close to center
+                applyAudioPanning(item);
+            } else if (style === 'onlyOne') {
+                // Implementation for onlyOne style
+            } else if (style === 'muteAll') {
+                item.mediaElement.volume = 0.0; // Mute all videos
+            } else {
+                item.mediaElement.volume = 0.0; // Mute all others
+            }
+        }
+    });
 }
 
 function optimizeVideoPlayback() {
@@ -346,11 +436,11 @@ function recalculateLayout() {
 
 function moveItemsForEndlessScroll() {
     const currentScrollTop = scrollOffset;
-    const moveThreshold = currentScrollTop - renderBuffer;
+    const moveThreshold = currentScrollTop - popOutPx;
     
     // NEW: Define the bottom of the visible screen, plus a buffer.
     // This is the lowest Y-coordinate an item is allowed to "respawn" at.
-    const respawnBuffer = 200; // 200px buffer below the viewport
+    const respawnBuffer = popInPx; // 200px buffer below the viewport
     const minRespawnY = currentScrollTop + viewportHeight + respawnBuffer;
 
     const candidateItems = mediaItems.filter(item => {
@@ -381,7 +471,8 @@ function moveItemsForEndlessScroll() {
         // MODIFIED: Ensure the new Y position is below the viewport.
         // We take the maximum of where it *should* go (newShortestColumnHeight)
         // and the minimum position we'll allow (minRespawnY).
-        const newY = Math.max(newShortestColumnHeight, minRespawnY);
+        let newY = Math.max(newShortestColumnHeight, minRespawnY);
+        // newY = newShortestColumnHeight;
         
         item.column = newShortestColumnIdx;
         item.x = newX;
