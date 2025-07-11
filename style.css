@@ -180,3 +180,34 @@ body {
     color: #999;
     text-align: center;
 }
+
+.speed-boost-display {
+    font-size: 12px;
+    color: #999;
+    text-align: center;
+}
+
+.column-speed-row {
+    display: flex;
+    align-items: center;
+    margin: 3px 0;
+    gap: 8px;
+}
+
+.column-label {
+    min-width: 40px;
+    font-size: 12px;
+    color: #ccc;
+}
+
+.column-speed-row input[type="range"] {
+    flex: 1;
+    margin: 0;
+}
+
+.column-speed-display {
+    min-width: 35px;
+    font-size: 10px;
+    color: #999;
+    text-align: right;
+}
