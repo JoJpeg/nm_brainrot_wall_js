@@ -403,9 +403,6 @@ function clearAllVideos() {
     // Clean up audio resources before removing items
     mediaItems.forEach(item => {
         cleanupItemAudio(item);
-        // **NEW: Reset all audio-related flags**
-        item.hasAudio = false;
-        item.audioInitialized = false;
         if (item.domElement) item.domElement.remove();
         if (item.objectURL) URL.revokeObjectURL(item.objectURL);
     });
@@ -552,9 +549,8 @@ function createMediaItem(nativeFileObject) {
     const mediaItem = {
         file: nativeFileObject, x: x, y: y, column: shortestColumnIdx,
         height: estimatedHeight, domElement: gridItemDiv.elt,
-        mediaElement: null, isVideo: false, hasAudio: false, id: `item-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        mediaElement: null, isVideo: false, id: `item-${Date.now()}-${Math.random().toString(16).slice(2)}`,
         objectURL: null
-        
     };
 
     let p5MediaElement;
@@ -598,7 +594,7 @@ function createMediaItem(nativeFileObject) {
             mediaItem.mediaElement.onerror = (e) => { console.error(`CREATE_ITEM: Bild-Ladefehler für ${nativeFileObject.name}`, e); URL.revokeObjectURL(objectURL); mediaItem.objectURL = null; }
         } else { gridItemDiv.remove(); URL.revokeObjectURL(objectURL); return; }
     } catch (e) { gridItemDiv.remove(); if (objectURL) URL.revokeObjectURL(objectURL); return; }
-    mediaItem.hasAudio = hasAudioCapability(mediaItem);
+
     mediaItems.push(mediaItem);
     columnHeights[shortestColumnIdx] = y + mediaItem.height + gutterSize; // Update with estimated height
     videoContainerElement.appendChild(gridItemDiv.elt);
@@ -608,65 +604,6 @@ function createMediaItem(nativeFileObject) {
         const visualY = y - columnOffsets[shortestColumnIdx];
         gridItemDiv.elt.style.top = visualY + 'px';
     }
-}
-
-// **NEW: Helper functions for robust audio capability detection**
-
-/**
- * Checks if a media item has audio capability using multiple detection methods
- * @param {Object} item - The media item to check
- * @returns {boolean} - True if the item has audio capability
- */
-function hasAudioCapability(item) {
-    if (!item || !item.mediaElement || !item.isVideo) {
-        return false;
-    }
-    
-    const mediaElement = item.mediaElement;
-    
-    // Method 1: Check if metadata is loaded and audioTracks are available
-    if (mediaElement.readyState >= 1) { // HAVE_METADATA or higher
-        if (mediaElement.audioTracks && typeof mediaElement.audioTracks.length === 'number') {
-            return mediaElement.audioTracks.length > 0;
-        }
-        
-        // Method 2: Check mozHasAudio (Firefox)
-        if (typeof mediaElement.mozHasAudio === 'boolean') {
-            return mediaElement.mozHasAudio;
-        }
-        
-        // Method 3: Check webkitAudioDecodedByteCount (Webkit browsers)
-        if (typeof mediaElement.webkitAudioDecodedByteCount === 'number') {
-            return mediaElement.webkitAudioDecodedByteCount > 0;
-        }
-    }
-    
-    // If metadata isn't loaded yet, return true to defer the check
-    // This prevents false negatives for videos still loading
-    return mediaElement.readyState < 1;
-}
-
-/**
- * Verifies if we can safely create an audio source from a media element
- * @param {HTMLMediaElement} mediaElement - The media element to check
- * @returns {boolean} - True if safe to create audio source
- */
-function canCreateAudioSource(mediaElement) {
-    if (!mediaElement) return false;
-    
-    // Ensure metadata is loaded
-    if (mediaElement.readyState < 1) return false;
-    
-    // Multiple checks for audio presence
-    const hasAudioTracks = mediaElement.audioTracks && mediaElement.audioTracks.length > 0;
-    const hasMozAudio = typeof mediaElement.mozHasAudio === 'boolean' && mediaElement.mozHasAudio;
-    const hasWebkitAudio = typeof mediaElement.webkitAudioDecodedByteCount === 'number' && 
-                          mediaElement.webkitAudioDecodedByteCount > 0;
-    
-    // Also check duration - audio-less videos might have very short or zero duration
-    const hasReasonableDuration = isFinite(mediaElement.duration) && mediaElement.duration > 0;
-    
-    return (hasAudioTracks || hasMozAudio || hasWebkitAudio) && hasReasonableDuration;
 }
 
 function applyAudioPanning(item) {
@@ -689,29 +626,24 @@ function applyAudioPanning(item) {
     
     if (!ensureAudioContextReady()) return;
     
-    
     try {
         // Only create audio nodes if they don't exist AND the AudioContext is ready
         if (!item.audioSource && item.mediaElement && globalAudioContext && globalAudioContext.state === 'running') {
-            // **IMPROVED: More robust audio track verification before creating source**
-            if (canCreateAudioSource(item.mediaElement)) {
-                // Element has verified audio tracks, safe to create audio source
+            // Check if the media element is already connected to avoid "already connected" errors
+            if (item.mediaElement.audioTracks && item.mediaElement.audioTracks.length > 0) {
+                // Element has audio tracks, safe to create audio source
                 item.audioSource = globalAudioContext.createMediaElementSource(item.mediaElement);
-                item.stereoPanner = globalAudioContext.createStereoPanner();
-                item.gainNode = globalAudioContext.createGain();
-                
-                // Connect the audio graph
-                item.audioSource.connect(item.stereoPanner);
-                item.stereoPanner.connect(item.gainNode);
-                item.gainNode.connect(globalAudioContext.destination);
-                
-                // **NEW: Mark as successfully initialized**
-                item.audioInitialized = true;
             } else {
-                // **NEW: Mark as having no audio and return early**
-                item.hasAudio = false;
+                // No audio tracks, skip audio processing for this element
                 return;
             }
+            item.stereoPanner = globalAudioContext.createStereoPanner();
+            item.gainNode = globalAudioContext.createGain();
+            
+            // Connect the audio graph
+            item.audioSource.connect(item.stereoPanner);
+            item.stereoPanner.connect(item.gainNode);
+            item.gainNode.connect(globalAudioContext.destination);
         }
         
         if (!item.stereoPanner || !globalAudioContext || globalAudioContext.state !== 'running') return;
@@ -729,9 +661,6 @@ function applyAudioPanning(item) {
         audioErrorCount++;
         lastAudioError = Date.now();
         console.warn(`Audio panning failed (error ${audioErrorCount}/${MAX_AUDIO_ERRORS}):`, error);
-        
-        // **NEW: Mark item as having no audio on any error to prevent retries**
-        item.hasAudio = false;
         
         // Clean up this item's audio to prevent further errors
         cleanupItemAudio(item);
@@ -941,9 +870,6 @@ function cleanupItemAudio(item) {
             item.gainNode.disconnect();
             item.gainNode = null;
         }
-        // **NEW: Reset audio-related flags when cleaning up**
-        item.audioInitialized = false;
-        // Note: We don't reset hasNoAudio flag as it's a permanent characteristic
     } catch (error) {
         console.warn('Error cleaning up audio for item:', error);
     }
@@ -1083,23 +1009,22 @@ function changeAudioVolume(style) {
                 const viewportCenterY = viewportHeight / 2;
                 const distanceFromCenter = Math.abs(itemCenterY - viewportCenterY);
                 const distanceNormalized = distanceFromCenter / (viewportHeight / 2); // Normalize to [0, 1]
-                if(item.hasAudio){
-                    let vol = 1 - distanceNormalized; // Closer to center = louder
-                    if(vol < 0) vol = 0; // Clamp volume to [0, 1]
-                    if (vol > 1) vol = 1; // Clamp volume to [0, 1]
-                    
-                    // Set volume through both the media element and gain node
-                    item.mediaElement.volume = vol;
-                    if (item.gainNode) {
-                        item.gainNode.gain.value = vol;
-                    }
-                    // Apply panning if volume > 0
-                    if (vol > 0) {
-                        applyAudioPanning(item);
-                    } else {
-                        // Clean up audio nodes if volume is 0
-                        cleanupItemAudio(item);
-                    }
+                let vol = 1 - distanceNormalized; // Closer to center = louder
+                if(vol < 0) vol = 0; // Clamp volume to [0, 1]
+                if (vol > 1) vol = 1; // Clamp volume to [0, 1]
+                
+                // Set volume through both the media element and gain node
+                item.mediaElement.volume = vol;
+                if (item.gainNode) {
+                    item.gainNode.gain.value = vol;
+                }
+                
+                // Apply panning if volume > 0
+                if (vol > 0) {
+                    applyAudioPanning(item);
+                } else {
+                    // Clean up audio nodes if volume is 0
+                    cleanupItemAudio(item);
                 }
             } else if (style === 'onlyOne') {
                 // Implementation for onlyOne style
