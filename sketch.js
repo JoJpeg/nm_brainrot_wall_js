@@ -22,6 +22,11 @@ let gutterSize = 10;
 let totalContentHeight = 0;
 let renderBuffer = 0; // Items further than this above viewport top are candidates for moving
 
+// Column movement offsets for independent scrolling
+let columnOffsets = [];
+let columnSpeeds = []; // Different speed for each column
+let colSpeedFac = 1; // Factor to adjust column speed, can be used for fine-tuning
+
 let lastLogFrame = 0;
 const logInterval = 60; // Log draw info approx every second
 
@@ -86,6 +91,13 @@ function createControlPanel() {
     let speedSlider = createSlider(0.5, 5, scrollSpeed, 0.1).parent(speedGroup);
     speedSlider.input(() => { scrollSpeed = speedSlider.value(); updateSpeedDisplay(); });
     createDiv(`${scrollSpeed.toFixed(1)}x`).addClass('speed-display').parent(speedGroup).id('speed-display');
+    
+    // Column speed factor control
+    let colSpeedGroup = createDiv('').addClass('control-group').parent(controlPanel);
+    createElement('label', 'Column Speed Difference:').parent(colSpeedGroup);
+    let colSpeedSlider = createSlider(0.1, 3.0, colSpeedFac, 0.1).parent(colSpeedGroup);
+    colSpeedSlider.input(() => { colSpeedFac = colSpeedSlider.value(); updateColSpeedDisplay(); });
+    createDiv(`${colSpeedFac.toFixed(1)}x`).addClass('col-speed-display').parent(colSpeedGroup).id('col-speed-display');
    
     //pop in and pop out settings
     let popSettingsGroup = createDiv('').addClass('control-group').parent(controlPanel);
@@ -122,6 +134,11 @@ function updateSpeedDisplay() {
     if (display) display.html(`${scrollSpeed.toFixed(1)}x`);
 }
 
+function updateColSpeedDisplay() {
+    let display = select('#col-speed-display');
+    if (display) display.html(`${colSpeedFac.toFixed(1)}x`);
+}
+
 function updateLayoutDimensions() {
     let containerWrapperWidth = window.innerWidth * 0.95;
     if (videoContainerElement && videoContainerElement.parentElement) {
@@ -140,6 +157,14 @@ function updateLayoutDimensions() {
         columnWidth = 100;
     }
     columnHeights = new Array(columnCount).fill(0);
+    
+    // Initialize column offsets and speeds
+    columnOffsets = new Array(columnCount).fill(0);
+    columnSpeeds = new Array(columnCount).fill(0).map((_, i) => {
+        // Slightly different speeds for each column (0.8x to 1.2x of base speed)
+        return Math.random(); // Random speed between 0.8 and 1.2
+    });
+    
     console.log(`LAYOUT_DIMS: containerWrapperWidth=${containerWrapperWidth.toFixed(0)}, columnWidth=${columnWidth.toFixed(0)}, columnHeights initialized.`);
 }
 
@@ -173,6 +198,7 @@ function clearAllVideos() {
     allMediaFiles = []; mediaItems = [];
     scrollOffset = 0; totalContentHeight = 0;
     columnHeights = new Array(columnCount).fill(0);
+    columnOffsets = new Array(columnCount).fill(0); // Reset column offsets
     if (videoContainerElement) videoContainerElement.style.height = '0px';
     isFirstSelection = true;
     console.log("CLEAR_ALL: Abgeschlossen.");
@@ -228,12 +254,29 @@ function isMediaFile(nativeFileObject) {
 
 function draw() {
     if (autoScrollEnabled && mediaItems.length > 0) {
-        scrollOffset += scrollSpeed;
-        window.scrollTo(0, scrollOffset);
+        // Update column offsets independently
+        for (let i = 0; i < columnCount; i++) {
+            
+            columnOffsets[i] += scrollSpeed * (columnSpeeds[i] * colSpeedFac);
+        }
+        
+        // Move all items based on their column offset
+        moveElementsByColumnOffset();
+        
         optimizeVideoPlayback();
         moveItemsForEndlessScroll();
         changeAudioVolume('centerY'); // Adjust volume based on item position
     }
+}
+
+function moveElementsByColumnOffset() {
+    mediaItems.forEach(item => {
+        if (item.domElement && item.column < columnOffsets.length) {
+            // Calculate the visual Y position (original Y minus column offset)
+            const visualY = item.y - columnOffsets[item.column];
+            item.domElement.style.top = visualY + 'px';
+        }
+    });
 }
 
 function createMediaItem(nativeFileObject) {
@@ -306,6 +349,12 @@ function createMediaItem(nativeFileObject) {
     mediaItems.push(mediaItem);
     columnHeights[shortestColumnIdx] = y + mediaItem.height + gutterSize; // Update with estimated height
     videoContainerElement.appendChild(gridItemDiv.elt);
+    
+    // Ensure initial visual position is correct
+    if (columnOffsets && columnOffsets[shortestColumnIdx] !== undefined) {
+        const visualY = y - columnOffsets[shortestColumnIdx];
+        gridItemDiv.elt.style.top = visualY + 'px';
+    }
 }
 
 function applyAudioPanning(item) {
@@ -370,13 +419,13 @@ function changeAudioVolume(style) {
         if (item.mediaElement && item.isVideo) {
             
             if (style === 'centerY') {
-                // Check if item is in the center of the viewport
-                let itemCenterY = item.y + (item.height / 2);
-                let viewportCenterY = scrollOffset + (viewportHeight / 2);
-                let distanceFromCenter = Math.abs(itemCenterY - viewportCenterY);
-                let distanceNormalized = distanceFromCenter / (viewportHeight / 2); // Normalize to [0, 1]
-                let vol = 1 - distanceNormalized; // Closer to ce nter = louder
-                // vol = vol * 2; 
+                // Calculate visual position considering column offset
+                const visualY = item.y - (columnOffsets[item.column] || 0);
+                const itemCenterY = visualY + (item.height / 2);
+                const viewportCenterY = viewportHeight / 2;
+                const distanceFromCenter = Math.abs(itemCenterY - viewportCenterY);
+                const distanceNormalized = distanceFromCenter / (viewportHeight / 2); // Normalize to [0, 1]
+                let vol = 1 - distanceNormalized; // Closer to center = louder
                 if(vol < 0) vol = 0; // Clamp volume to [0, 1]
                 if (vol > 1) vol = 1; // Clamp volume to [0, 1]
                 item.mediaElement.volume = vol; // Full volume for items close to center
@@ -393,13 +442,18 @@ function changeAudioVolume(style) {
 }
 
 function optimizeVideoPlayback() {
-    let currentScrollTop = scrollOffset;
-    let visibleTop = currentScrollTop - renderBuffer;
-    let visibleBottom = currentScrollTop + viewportHeight + renderBuffer;
     mediaItems.forEach(item => {
         if (item.isVideo && item.mediaElement) {
-            let itemTop = item.y; let itemBottom = item.y + item.height;
-            let isVisible = itemBottom >= visibleTop && itemTop <= visibleBottom;
+            // Calculate visual position considering column offset
+            const visualY = item.y - (columnOffsets[item.column] || 0);
+            const itemTop = visualY;
+            const itemBottom = visualY + item.height;
+            
+            // Check if item is visible in viewport
+            const visibleTop = -renderBuffer;
+            const visibleBottom = viewportHeight + renderBuffer;
+            const isVisible = itemBottom >= visibleTop && itemTop <= visibleBottom;
+            
             try {
                 if (isVisible && item.mediaElement.paused) item.mediaElement.play().catch(e => {});
                 else if (!isVisible && !item.mediaElement.paused) item.mediaElement.pause();
@@ -422,6 +476,9 @@ function recalculateLayout() {
         columnHeights = new Array(columnCount).fill(0);
     }
 
+    // Reset column offsets
+    columnOffsets = new Array(columnCount).fill(0);
+    
     totalContentHeight = 0;
     if (videoContainerElement) videoContainerElement.style.height = '0px';
 
@@ -437,54 +494,48 @@ function recalculateLayout() {
 // sketch.js -> moveItemsForEndlessScroll
 
 function moveItemsForEndlessScroll() {
-    const currentScrollTop = scrollOffset;
-    const moveThreshold = currentScrollTop - popOutPx;
-    
-    // NEW: Define the bottom of the visible screen, plus a buffer.
-    // This is the lowest Y-coordinate an item is allowed to "respawn" at.
-    const respawnBuffer = popInPx; // 200px buffer below the viewport
-    const minRespawnY = currentScrollTop + viewportHeight + respawnBuffer;
-
-    const candidateItems = mediaItems.filter(item => {
-        const itemBottom = item.y + item.height;
-        return itemBottom < moveThreshold;
-    });
-
-    if (candidateItems.length === 0) {
-        return;
-    }
-
-    candidateItems.sort((a, b) => a.y - b.y);
-    const itemsToProcess = candidateItems.slice(0, 1);
-
-    itemsToProcess.forEach(item => {
-        let newShortestColumnIdx = 0;
-        let newShortestColumnHeight = columnHeights[0] || 0;
-        for (let i = 1; i < columnCount; i++) {
-            const h = columnHeights[i] || 0;
-            if (h < newShortestColumnHeight) {
-                newShortestColumnHeight = h;
-                newShortestColumnIdx = i;
-            }
-        }
-
-        const newX = newShortestColumnIdx * (columnWidth + gutterSize);
-
-        // MODIFIED: Ensure the new Y position is below the viewport.
-        // We take the maximum of where it *should* go (newShortestColumnHeight)
-        // and the minimum position we'll allow (minRespawnY).
-        let newY = Math.max(newShortestColumnHeight, minRespawnY);
-        // newY = newShortestColumnHeight;
+    // For each column, check if items need to be moved
+    for (let columnIdx = 0; columnIdx < columnCount; columnIdx++) {
+        const columnOffset = columnOffsets[columnIdx];
+        const moveThreshold = columnOffset - popOutPx; // Items that are this far above viewport
         
-        item.column = newShortestColumnIdx;
-        item.x = newX;
-        item.y = newY;
+        // Find items in this column that are above the move threshold
+        const candidateItems = mediaItems.filter(item => {
+            if (item.column !== columnIdx) return false;
+            const itemBottom = item.y + item.height;
+            return itemBottom < moveThreshold;
+        });
 
-        item.domElement.style.left = newX + 'px';
-        item.domElement.style.top = newY + 'px';
+        if (candidateItems.length === 0) continue;
 
-        columnHeights[newShortestColumnIdx] = newY + item.height + gutterSize;
-    });
+        // Sort by Y position and process the topmost item
+        candidateItems.sort((a, b) => a.y - b.y);
+        const itemsToProcess = candidateItems.slice(0, 1);
+
+        itemsToProcess.forEach(item => {
+            // Find the current height of this column
+            let currentColumnHeight = Math.max(0, columnHeights[columnIdx] || 0);
+            
+            // Ensure the new position is below the current viewport
+            const viewportTop = columnOffset;
+            const minRespawnY = Math.max(
+                currentColumnHeight,
+                viewportTop + viewportHeight + popInPx
+            );
+
+            const newX = columnIdx * (columnWidth + gutterSize);
+            const newY = minRespawnY;
+            
+            // Update item position
+            item.x = newX;
+            item.y = newY;
+
+            // Update column height
+            columnHeights[columnIdx] = newY + item.height + gutterSize;
+            
+            // The visual position will be updated by moveElementsByColumnOffset()
+        });
+    }
 
     updateContainerHeight();
 }
