@@ -81,9 +81,35 @@ body {
     padding: 15px;
     z-index: 1000;
     max-width: 300px;
+    max-height: calc(100vh - 40px); /* Leave 20px space on top and bottom */
+    overflow-y: auto;
+    overflow-x: hidden;
     backdrop-filter: blur(10px);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
     transition: all 0.3s ease;
+    /* Custom scrollbar styling for better appearance */
+    scrollbar-width: thin;
+    scrollbar-color: #555 rgba(26, 26, 26, 0.95);
+}
+
+/* Custom scrollbar styling for webkit browsers (Chrome, Safari) */
+.control-panel::-webkit-scrollbar {
+    width: 8px;
+}
+
+.control-panel::-webkit-scrollbar-track {
+    background: rgba(40, 40, 40, 0.3);
+    border-radius: 4px;
+}
+
+.control-panel::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+    border: 1px solid rgba(26, 26, 26, 0.95);
+}
+
+.control-panel::-webkit-scrollbar-thumb:hover {
+    background: #666;
 }
 
 .control-panel.collapsed {
