@@ -217,3 +217,23 @@ body {
     color: #999;
     text-align: right;
 }
+
+.folder-status {
+    font-size: 12px;
+    color: #999;
+    margin-top: 5px;
+    padding: 5px;
+    background: rgba(40, 40, 40, 0.5);
+    border-radius: 3px;
+    border: 1px solid #555;
+}
+
+.control-panel button#add-more-button {
+    background: #28a745;
+    font-size: 11px;
+    padding: 6px 10px;
+}
+
+.control-panel button#add-more-button:hover {
+    background: #1e7e34;
+}

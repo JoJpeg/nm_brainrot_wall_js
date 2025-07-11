@@ -5,6 +5,7 @@ let controlPanel; // Reference to control panel for keyboard toggle
 let controlPanelOpen = false;
 let isFirstSelection = true;
 let tabPressed = false; // Track if space has been pressed to remove the label
+let selectedFolders = []; // Track multiple selected folders
 
 // Einfache Variablen für automatisches Scrolling
 let allMediaFiles = [];
@@ -147,9 +148,23 @@ function createControlPanel() {
     createElement('h3', 'Brainrot Wall Controls').parent(controlPanel);
     let fileGroup = createDiv('').addClass('control-group').parent(controlPanel);
     createElement('label', 'Medien-Ordner auswählen:').parent(fileGroup);
+    
+    // Primary folder selection button
     inputButton = createFileInput(handleFileProcessing, 'true').parent(fileGroup);
     inputButton.elt.setAttribute('webkitdirectory', true);
     inputButton.elt.setAttribute('directory', true);
+    
+    // Add more folders button (initially hidden)
+    let addMoreButton = createButton('📁 Weiteren Ordner hinzufügen').parent(fileGroup).id('add-more-button');
+    addMoreButton.style('display', 'none');
+    addMoreButton.style('margin-top', '5px');
+    addMoreButton.mousePressed(showAdditionalFolderSelector);
+    
+    // Status display
+    let folderStatus = createDiv('Kein Ordner ausgewählt').addClass('folder-status').parent(fileGroup).id('folder-status');
+    folderStatus.style('font-size', '12px');
+    folderStatus.style('color', '#999');
+    folderStatus.style('margin-top', '5px');
     let scrollGroup = createDiv('').addClass('control-group').parent(controlPanel);
     createElement('label', 'Auto-Scroll:').parent(scrollGroup);
     let scrollButton = createButton('▶️ Starten').parent(scrollGroup).id('scroll-button');
@@ -389,12 +404,14 @@ function clearAllVideos() {
     });
     
     allMediaFiles = []; mediaItems = [];
+    selectedFolders = []; // Reset folder tracking
     scrollOffset = 0; totalContentHeight = 0;
     columnHeights = new Array(columnCount).fill(0);
     columnOffsets = new Array(columnCount).fill(0); // Reset column offsets
     // Keep individual column speeds as they are user preferences
     if (videoContainerElement) videoContainerElement.style.height = '0px';
     isFirstSelection = true;
+    updateFolderStatus(); // Update folder status display
     console.log("CLEAR_ALL: Abgeschlossen.");
 }
 
@@ -417,18 +434,27 @@ function handleFileProcessing(selectedFileOrArray) {
         if (isMediaFile(selectedFileOrArray.file)) filesReceived.push(selectedFileOrArray.file);
     }
 
-    let newUniqueFiles = filesReceived.filter(f_new =>
-        !allMediaFiles.some(f_existing => f_existing.name === f_new.name && f_existing.size === f_new.size)
-    );
+    if (filesReceived.length > 0) {
+        // Extract folder name from the first file for display
+        let folderPath = filesReceived[0].webkitRelativePath || filesReceived[0].name;
+        let folderName = folderPath.split('/')[0] || 'Unknown Folder';
+        selectedFolders.push(folderName);
+        
+        let newUniqueFiles = filesReceived.filter(f_new =>
+            !allMediaFiles.some(f_existing => f_existing.name === f_new.name && f_existing.size === f_new.size)
+        );
 
-    if (newUniqueFiles.length > 0) {
-        allMediaFiles.push(...newUniqueFiles);
-        console.log(`FILE_PROCESSING: Erstelle ${newUniqueFiles.length} neue Media-Items.`);
-        newUniqueFiles.forEach(file => createMediaItem(file));
-        updateContainerHeight(); // Single call after all new items are processed and their estimated heights added
-        console.log(`FILE_PROCESSING: ${newUniqueFiles.length} Items hinzugefügt. Initiale totalContentHeight=${totalContentHeight.toFixed(0)}`);
-    } else {
-        console.log("FILE_PROCESSING: Keine neuen einzigartigen Dateien.");
+        if (newUniqueFiles.length > 0) {
+            allMediaFiles.push(...newUniqueFiles);
+            console.log(`FILE_PROCESSING: Erstelle ${newUniqueFiles.length} neue Media-Items.`);
+            newUniqueFiles.forEach(file => createMediaItem(file));
+            updateContainerHeight(); // Single call after all new items are processed and their estimated heights added
+            updateFolderStatus(); // Update the folder display
+            console.log(`FILE_PROCESSING: ${newUniqueFiles.length} Items hinzugefügt. Initiale totalContentHeight=${totalContentHeight.toFixed(0)}`);
+        } else {
+            console.log("FILE_PROCESSING: Keine neuen einzigartigen Dateien.");
+            updateFolderStatus(); // Still update status even if no new files
+        }
     }
 }
 
@@ -1108,4 +1134,84 @@ function moveItemsForEndlessScroll() {
     }
 
     updateContainerHeight();
+}
+
+// Global variable to track folders
+// selectedFolders = []; - moved to global variables section
+
+// ...existing code...
+
+function showAdditionalFolderSelector() {
+    // Create a new temporary file input for additional folder selection
+    let tempInput = createFileInput(handleAdditionalFolders, 'true');
+    tempInput.elt.setAttribute('webkitdirectory', true);
+    tempInput.elt.setAttribute('directory', true);
+    tempInput.elt.style.display = 'none';
+    
+    // Append to body temporarily and trigger click
+    document.body.appendChild(tempInput.elt);
+    tempInput.elt.click();
+    
+    // Clean up after selection
+    tempInput.elt.addEventListener('change', () => {
+        setTimeout(() => {
+            if (tempInput.elt.parentNode) {
+                tempInput.elt.parentNode.removeChild(tempInput.elt);
+            }
+        }, 100);
+    });
+}
+
+function handleAdditionalFolders(selectedFileOrArray) {
+    console.log("ADDITIONAL_FOLDERS: Processing additional folder selection");
+    
+    // Process the additional files without clearing existing content
+    let filesReceived = [];
+    if (Array.isArray(selectedFileOrArray)) {
+        selectedFileOrArray.forEach(p5File => {
+            if (isMediaFile(p5File.file)) filesReceived.push(p5File.file);
+        });
+    } else if (selectedFileOrArray && selectedFileOrArray.file) {
+        if (isMediaFile(selectedFileOrArray.file)) filesReceived.push(selectedFileOrArray.file);
+    }
+
+    if (filesReceived.length > 0) {
+        // Extract folder name from the first file for display
+        let folderPath = filesReceived[0].webkitRelativePath || filesReceived[0].name;
+        let folderName = folderPath.split('/')[0] || 'Unknown Folder';
+        selectedFolders.push(folderName);
+        
+        // Add unique files to existing collection
+        let newUniqueFiles = filesReceived.filter(f_new =>
+            !allMediaFiles.some(f_existing => f_existing.name === f_new.name && f_existing.size === f_new.size)
+        );
+
+        if (newUniqueFiles.length > 0) {
+            allMediaFiles.push(...newUniqueFiles);
+            console.log(`ADDITIONAL_FOLDERS: Erstelle ${newUniqueFiles.length} neue Media-Items.`);
+            newUniqueFiles.forEach(file => createMediaItem(file));
+            updateContainerHeight();
+            updateFolderStatus();
+            console.log(`ADDITIONAL_FOLDERS: ${newUniqueFiles.length} Items hinzugefügt.`);
+        } else {
+            console.log("ADDITIONAL_FOLDERS: Keine neuen einzigartigen Dateien gefunden.");
+            updateFolderStatus();
+        }
+    }
+}
+
+function updateFolderStatus() {
+    let statusElement = select('#folder-status');
+    let addMoreButton = select('#add-more-button');
+    
+    if (selectedFolders.length === 0) {
+        if (statusElement) statusElement.html('Kein Ordner ausgewählt');
+        if (addMoreButton) addMoreButton.style('display', 'none');
+    } else if (selectedFolders.length === 1) {
+        if (statusElement) statusElement.html(`Ordner: ${selectedFolders[0]} (${allMediaFiles.length} Dateien)`);
+        if (addMoreButton) addMoreButton.style('display', 'block');
+    } else {
+        if (statusElement) statusElement.html(`${selectedFolders.length} Ordner (${allMediaFiles.length} Dateien)`);
+        if (addMoreButton) addMoreButton.style('display', 'block');
+    }
 }
