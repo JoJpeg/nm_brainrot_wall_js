@@ -106,19 +106,23 @@ function createControlPanel() {
     speedBoostSlider.input(() => { speedBoost = speedBoostSlider.value(); updateSpeedBoostDisplay(); });
     createDiv(`${speedBoost.toFixed(1)}x`).addClass('speed-boost-display').parent(speedBoostGroup).id('speed-boost-display');
     
+    // Column count control
+    let columnCountGroup = createDiv('').addClass('control-group').parent(controlPanel);
+    createElement('label', 'Number of Columns:').parent(columnCountGroup);
+    let columnCountSlider = createSlider(2, 10, columnCount, 1).parent(columnCountGroup);
+    columnCountSlider.input(() => { 
+        let newColumnCount = columnCountSlider.value();
+        if (newColumnCount !== columnCount) {
+            changeColumnCount(newColumnCount);
+            updateColumnCountDisplay();
+        }
+    });
+    createDiv(`${columnCount} columns`).addClass('column-count-display').parent(columnCountGroup).id('column-count-display');
+    
     // Individual column speed controls
     let columnSpeedGroup = createDiv('').addClass('control-group').parent(controlPanel);
     createElement('label', 'Individual Column Speeds:').parent(columnSpeedGroup);
-    for (let i = 0; i < columnCount; i++) {
-        let colGroup = createDiv('').addClass('column-speed-row').parent(columnSpeedGroup);
-        createElement('span', `Col ${i + 1}:`).addClass('column-label').parent(colGroup);
-        let colSlider = createSlider(0.1, 2.0, individualColumnSpeeds[i] || 1.0, 0.1).parent(colGroup);
-        colSlider.input(() => { 
-            individualColumnSpeeds[i] = colSlider.value(); 
-            updateColumnSpeedDisplay(i); 
-        });
-        createDiv(`${(individualColumnSpeeds[i] || 1.0).toFixed(1)}x`).addClass('column-speed-display').parent(colGroup).id(`col-speed-${i}`);
-    }
+    createColumnSpeedControls(columnSpeedGroup);
    
     //pop in and pop out settings
     let popSettingsGroup = createDiv('').addClass('control-group').parent(controlPanel);
@@ -163,6 +167,86 @@ function updateSpeedBoostDisplay() {
 function updateColumnSpeedDisplay(columnIndex) {
     let display = select(`#col-speed-${columnIndex}`);
     if (display) display.html(`${individualColumnSpeeds[columnIndex].toFixed(1)}x`);
+}
+
+function updateColumnCountDisplay() {
+    let display = select('#column-count-display');
+    if (display) display.html(`${columnCount} columns`);
+}
+
+function createColumnSpeedControls(parentGroup) {
+    // Remove existing column speed rows
+    let existingRows = selectAll('.column-speed-row');
+    existingRows.forEach(row => row.remove());
+    
+    // Create new controls for current column count
+    for (let i = 0; i < columnCount; i++) {
+        let colGroup = createDiv('').addClass('column-speed-row').parent(parentGroup);
+        createElement('span', `Col ${i + 1}:`).addClass('column-label').parent(colGroup);
+        let colSlider = createSlider(0.1, 2.0, individualColumnSpeeds[i] || 1.0, 0.1).parent(colGroup);
+        colSlider.input(() => { 
+            individualColumnSpeeds[i] = colSlider.value(); 
+            updateColumnSpeedDisplay(i); 
+        });
+        createDiv(`${(individualColumnSpeeds[i] || 1.0).toFixed(1)}x`).addClass('column-speed-display').parent(colGroup).id(`col-speed-${i}`);
+    }
+}
+
+function changeColumnCount(newColumnCount) {
+    if (newColumnCount === columnCount) return;
+    
+    console.log(`COLUMN_COUNT_CHANGE: Changing from ${columnCount} to ${newColumnCount} columns`);
+    
+    // Pause auto-scroll during the transition
+    let wasAutoScrolling = autoScrollEnabled;
+    if (autoScrollEnabled) {
+        autoScrollEnabled = false;
+        toggleAutoScroll();
+    }
+    
+    // Update column count
+    columnCount = newColumnCount;
+    
+    // Adjust individual column speeds array
+    if (individualColumnSpeeds.length > columnCount) {
+        // Remove excess speeds
+        individualColumnSpeeds = individualColumnSpeeds.slice(0, columnCount);
+    } else if (individualColumnSpeeds.length < columnCount) {
+        // Add new speeds with default value of 1.0
+        while (individualColumnSpeeds.length < columnCount) {
+            individualColumnSpeeds.push(1.0);
+        }
+    }
+    
+    // Recalculate layout dimensions and rebuild everything
+    updateLayoutDimensions();
+    
+    // Find the column speed group and recreate controls
+    let allLabels = selectAll('label');
+    let columnSpeedGroup = null;
+    for (let i = 0; i < allLabels.length; i++) {
+        if (allLabels[i].html() === 'Individual Column Speeds:') {
+            columnSpeedGroup = allLabels[i].parent();
+            break;
+        }
+    }
+    
+    if (columnSpeedGroup) {
+        createColumnSpeedControls(columnSpeedGroup);
+    }
+    
+    // Rebuild the layout with existing media
+    if (mediaItems.length > 0) {
+        recalculateLayout();
+    }
+    
+    // Resume auto-scroll if it was running
+    if (wasAutoScrolling) {
+        autoScrollEnabled = true;
+        toggleAutoScroll();
+    }
+    
+    console.log(`COLUMN_COUNT_CHANGE: Successfully changed to ${columnCount} columns`);
 }
 
 function updateLayoutDimensions() {
