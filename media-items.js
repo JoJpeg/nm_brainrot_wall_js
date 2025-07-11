@@ -6,18 +6,36 @@ function createMediaItem(nativeFileObject) {
         console.error(`CREATE_ITEM: columnWidth (${columnWidth.toFixed(2)}) ungültig für ${nativeFileObject.name}.`);
         return;
     }
-    
+
     let shortestColumnIdx = 0;
-    let currentShortestHeight = columnHeights[0];
+    let shortestEffectiveHeight = columnHeights[0];
+
+
+    // When items are added during auto-scroll, we need to consider the column offsets
     for (let i = 1; i < columnCount; i++) {
-        if (columnHeights[i] < currentShortestHeight) {
-            currentShortestHeight = columnHeights[i];
+        let effectiveHeight = columnHeights[i];
+
+        // If auto-scroll is active and column offsets exist, 
+        // we want to place new items where they'll be visible
+        if (autoScrollEnabled && columnOffsets && columnOffsets[i] !== undefined) {
+            // Ensure new items appear below the current viewport
+            let minVisibleY = columnOffsets[i] + viewportHeight + popInPx;
+            effectiveHeight = Math.max(effectiveHeight, minVisibleY);
+        }
+
+        if (effectiveHeight < shortestEffectiveHeight) {
+            shortestEffectiveHeight = effectiveHeight;
             shortestColumnIdx = i;
         }
     }
-    let x = shortestColumnIdx * (columnWidth + gutterSize);
-    let y = currentShortestHeight;
 
+    let x = shortestColumnIdx * (columnWidth + gutterSize);
+    let y = shortestEffectiveHeight;
+    // Ensure y position accounts for column offset if auto-scrolling
+    if (autoScrollEnabled && columnOffsets && columnOffsets[shortestColumnIdx] !== undefined) {
+        let minVisibleY = columnOffsets[shortestColumnIdx] + viewportHeight + popInPx;
+        y = Math.max(y, minVisibleY);
+    }
     let gridItemDiv = createDiv('').addClass('grid-item')
         .style('position', 'absolute')
         .style('left', x + 'px').style('top', y + 'px').style('width', columnWidth + 'px');
@@ -68,26 +86,26 @@ function createMediaItem(nativeFileObject) {
                 }
                 URL.revokeObjectURL(objectURL); mediaItem.objectURL = null;
             };
-            mediaItem.mediaElement.onerror = (e) => { 
-                console.error(`CREATE_ITEM: Bild-Ladefehler für ${nativeFileObject.name}`, e); 
-                URL.revokeObjectURL(objectURL); 
-                mediaItem.objectURL = null; 
+            mediaItem.mediaElement.onerror = (e) => {
+                console.error(`CREATE_ITEM: Bild-Ladefehler für ${nativeFileObject.name}`, e);
+                URL.revokeObjectURL(objectURL);
+                mediaItem.objectURL = null;
             }
-        } else { 
-            gridItemDiv.remove(); 
-            URL.revokeObjectURL(objectURL); 
-            return; 
+        } else {
+            gridItemDiv.remove();
+            URL.revokeObjectURL(objectURL);
+            return;
         }
-    } catch (e) { 
-        gridItemDiv.remove(); 
-        if (objectURL) URL.revokeObjectURL(objectURL); 
-        return; 
+    } catch (e) {
+        gridItemDiv.remove();
+        if (objectURL) URL.revokeObjectURL(objectURL);
+        return;
     }
 
     mediaItems.push(mediaItem);
     columnHeights[shortestColumnIdx] = y + mediaItem.height + gutterSize; // Update with estimated height
     videoContainerElement.appendChild(gridItemDiv.elt);
-    
+
     // Ensure initial visual position is correct
     if (columnOffsets && columnOffsets[shortestColumnIdx] !== undefined) {
         const visualY = y - columnOffsets[shortestColumnIdx];
@@ -121,19 +139,19 @@ function optimizeVideoPlayback() {
             const visualY = item.y - (columnOffsets[item.column] || 0);
             const itemTop = visualY;
             const itemBottom = visualY + item.height;
-            
+
             // Check if item is visible in viewport
             const visibleTop = -renderBuffer;
             const visibleBottom = viewportHeight + renderBuffer;
             const isVisible = itemBottom >= visibleTop && itemTop <= visibleBottom;
-            
+
             try {
                 if (isVisible && item.mediaElement.paused) {
-                    item.mediaElement.play().catch(e => {});
+                    item.mediaElement.play().catch(e => { });
                 } else if (!isVisible && !item.mediaElement.paused) {
                     item.mediaElement.pause();
                 }
-            } catch (e) {}
+            } catch (e) { }
         }
     });
 }
