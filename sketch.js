@@ -15,7 +15,7 @@ let popInPx = 0; // Pixel, um die Items vor dem Scrollen "hereinpoppen" sollen
 let popOutPx = 200; // Pixel, um die Items nach dem Scrollen "herauspoppen" sollen
 
 // Masonry-Layout Variablen
-let columnCount = 5;
+let columnCount = 6;
 let columnWidth = 100;
 let columnHeights = [];
 let gutterSize = 10;
@@ -104,7 +104,7 @@ function createControlPanel() {
         updatePopLabels(); // Update the display label immediately
     });
     createDiv(`Pop-In: ${popInPx}px`).addClass('pop-in-display').parent(popSettingsGroup).id('pop-in-display');
-    
+
     let clearGroup = createDiv('').addClass('control-group').parent(controlPanel);
     createButton('🗑️ Alle löschen').addClass('danger').parent(clearGroup).mousePressed(clearAllVideos);
 
@@ -374,9 +374,11 @@ function changeAudioVolume(style) {
                 let itemCenterY = item.y + (item.height / 2);
                 let viewportCenterY = scrollOffset + (viewportHeight / 2);
                 let distanceFromCenter = Math.abs(itemCenterY - viewportCenterY);
-                let distanceNormalized = distanceFromCenter / (viewportHeight / 2) * 2; // Normalize to [0, 1]
+                let distanceNormalized = distanceFromCenter / (viewportHeight / 2); // Normalize to [0, 1]
                 let vol = 1 - distanceNormalized; // Closer to ce nter = louder
+                // vol = vol * 2; 
                 if(vol < 0) vol = 0; // Clamp volume to [0, 1]
+                if (vol > 1) vol = 1; // Clamp volume to [0, 1]
                 item.mediaElement.volume = vol; // Full volume for items close to center
                 applyAudioPanning(item);
             } else if (style === 'onlyOne') {
