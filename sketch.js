@@ -3,6 +3,7 @@ let inputButton;
 let videoContainerElement;
 let controlPanel; // Reference to control panel for keyboard toggle
 let isFirstSelection = true;
+let spacePressed = false; // Track if space has been pressed to remove the label
 
 // Einfache Variablen für automatisches Scrolling
 let allMediaFiles = [];
@@ -26,7 +27,7 @@ let renderBuffer = 0; // Items further than this above viewport top are candidat
 let columnOffsets = [];
 let columnSpeeds = []; // Different speed for each column
 let individualColumnSpeeds = []; // User-controlled speed for each column
-let speedBoost = 1; // Factor to boost all column speeds or make them uniform
+let uniformity = 0; // 0 = full individual speeds, 1 = uniform movement
 
 let lastLogFrame = 0;
 const logInterval = 60; // Log draw info approx every second
@@ -64,6 +65,15 @@ function setup() {
 function keyPressed() {
     // Toggle control panel when Space key is pressed
     if (key === ' ') {
+        // Remove "Press Space" label on first space press
+        if (!spacePressed) {
+            let pressSpaceLabel = select('p');
+            if (pressSpaceLabel) {
+                pressSpaceLabel.remove();
+            }
+            spacePressed = true;
+        }
+        
         if (controlPanel) {
             controlPanel.toggleClass('collapsed');
         }
@@ -78,7 +88,7 @@ function createControlPanel() {
     
     // Initialize individual column speeds if not set
     if (individualColumnSpeeds.length === 0) {
-        individualColumnSpeeds = new Array(columnCount).fill(1.0);
+        individualColumnSpeeds = new Array(columnCount).fill(0).map(() => 0.5 + Math.random() * 1.0); // Random between 0.5 and 1.5
     }
     
     // let toggleBtn = createDiv('⚙️').addClass('control-toggle').parent(controlPanel);
@@ -99,12 +109,6 @@ function createControlPanel() {
     speedSlider.input(() => { scrollSpeed = speedSlider.value(); updateSpeedDisplay(); });
     createDiv(`${scrollSpeed.toFixed(1)}x`).addClass('speed-display').parent(speedGroup).id('speed-display');
     
-    // Speed boost control
-    let speedBoostGroup = createDiv('').addClass('control-group').parent(controlPanel);
-    createElement('label', 'Speed Boost (0 = Uniform):').parent(speedBoostGroup);
-    let speedBoostSlider = createSlider(0, 3.0, speedBoost, 0.1).parent(speedBoostGroup);
-    speedBoostSlider.input(() => { speedBoost = speedBoostSlider.value(); updateSpeedBoostDisplay(); });
-    createDiv(`${speedBoost.toFixed(1)}x`).addClass('speed-boost-display').parent(speedBoostGroup).id('speed-boost-display');
     
     // Column count control
     let columnCountGroup = createDiv('').addClass('control-group').parent(controlPanel);
@@ -118,6 +122,12 @@ function createControlPanel() {
         }
     });
     createDiv(`${columnCount} columns`).addClass('column-count-display').parent(columnCountGroup).id('column-count-display');
+    // Uniformity control
+    let uniformityGroup = createDiv('').addClass('control-group').parent(controlPanel);
+    createElement('label', 'Uniformity:').parent(uniformityGroup);
+    let uniformitySlider = createSlider(0, 1.0, uniformity, 0.1).parent(uniformityGroup);
+    uniformitySlider.input(() => { uniformity = uniformitySlider.value(); updateUniformityDisplay(); });
+    createDiv(`${uniformity.toFixed(1)}`).addClass('uniformity-display').parent(uniformityGroup).id('uniformity-display');
     
     // Individual column speed controls
     let columnSpeedGroup = createDiv('').addClass('control-group').parent(controlPanel);
@@ -127,14 +137,14 @@ function createControlPanel() {
     //pop in and pop out settings
     let popSettingsGroup = createDiv('').addClass('control-group').parent(controlPanel);
     createElement('label', 'Pop-In/Out Einstellungen:').parent(popSettingsGroup);
-    let popOutSlider = createSlider(0, 500, popOutPx,
+    let popOutSlider = createSlider(-500, 500, popOutPx,
         10).parent(popSettingsGroup);
     popOutSlider.input(() => {
         popOutPx = popOutSlider.value();
         updatePopLabels(); // Update the display label immediately
     });
     createDiv(`Pop-Out: ${popOutPx}px`).addClass('pop-out-display').parent(popSettingsGroup).id('pop-out-display'); 
-    let popInSlider = createSlider(0, 500, popInPx,
+    let popInSlider = createSlider(-500, 500, popInPx,
         10).parent(popSettingsGroup);
     popInSlider.input(() => {
         popInPx = popInSlider.value();
@@ -144,7 +154,6 @@ function createControlPanel() {
 
     let clearGroup = createDiv('').addClass('control-group').parent(controlPanel);
     createButton('🗑️ Alle löschen').addClass('danger').parent(clearGroup).mousePressed(clearAllVideos);
-
 
 }
 function updatePopLabels(){
@@ -159,9 +168,9 @@ function updateSpeedDisplay() {
     if (display) display.html(`${scrollSpeed.toFixed(1)}x`);
 }
 
-function updateSpeedBoostDisplay() {
-    let display = select('#speed-boost-display');
-    if (display) display.html(`${speedBoost.toFixed(1)}x`);
+function updateUniformityDisplay() {
+    let display = select('#uniformity-display');
+    if (display) display.html(`${uniformity.toFixed(1)}`);
 }
 
 function updateColumnSpeedDisplay(columnIndex) {
@@ -181,14 +190,19 @@ function createColumnSpeedControls(parentGroup) {
     
     // Create new controls for current column count
     for (let i = 0; i < columnCount; i++) {
+        // Ensure we have a speed value for this column
+        if (!individualColumnSpeeds[i]) {
+            individualColumnSpeeds[i] = 0.5 + Math.random() * 1.0; // Random between 0.5 and 1.5
+        }
+        
         let colGroup = createDiv('').addClass('column-speed-row').parent(parentGroup);
         createElement('span', `Col ${i + 1}:`).addClass('column-label').parent(colGroup);
-        let colSlider = createSlider(0.1, 2.0, individualColumnSpeeds[i] || 1.0, 0.1).parent(colGroup);
+        let colSlider = createSlider(0.1, 2.0, individualColumnSpeeds[i], 0.1).parent(colGroup);
         colSlider.input(() => { 
             individualColumnSpeeds[i] = colSlider.value(); 
             updateColumnSpeedDisplay(i); 
         });
-        createDiv(`${(individualColumnSpeeds[i] || 1.0).toFixed(1)}x`).addClass('column-speed-display').parent(colGroup).id(`col-speed-${i}`);
+        createDiv(`${individualColumnSpeeds[i].toFixed(1)}x`).addClass('column-speed-display').parent(colGroup).id(`col-speed-${i}`);
     }
 }
 
@@ -212,9 +226,9 @@ function changeColumnCount(newColumnCount) {
         // Remove excess speeds
         individualColumnSpeeds = individualColumnSpeeds.slice(0, columnCount);
     } else if (individualColumnSpeeds.length < columnCount) {
-        // Add new speeds with default value of 1.0
+        // Add new speeds with random values
         while (individualColumnSpeeds.length < columnCount) {
-            individualColumnSpeeds.push(1.0);
+            individualColumnSpeeds.push(0.5 + Math.random() * 1.0); // Random between 0.5 and 1.5
         }
     }
     
@@ -271,9 +285,18 @@ function updateLayoutDimensions() {
     // Initialize column offsets and speeds
     columnOffsets = new Array(columnCount).fill(0);
     
-    // Initialize individual column speeds if not already set
-    if (individualColumnSpeeds.length !== columnCount) {
-        individualColumnSpeeds = new Array(columnCount).fill(1.0);
+    // Initialize individual column speeds if not already set - preserve existing random values
+    if (individualColumnSpeeds.length === 0) {
+        individualColumnSpeeds = new Array(columnCount).fill(0).map(() => 0.5 + Math.random() * 1.0);
+    } else if (individualColumnSpeeds.length !== columnCount) {
+        // Only adjust if column count changed, preserve existing values
+        if (individualColumnSpeeds.length > columnCount) {
+            individualColumnSpeeds = individualColumnSpeeds.slice(0, columnCount);
+        } else {
+            while (individualColumnSpeeds.length < columnCount) {
+                individualColumnSpeeds.push(0.5 + Math.random() * 1.0);
+            }
+        }
     }
     
     // Set columnSpeeds based on individual speeds (will be modified by speedBoost in draw())
@@ -372,12 +395,14 @@ function draw() {
         // Update column offsets independently
         for (let i = 0; i < columnCount; i++) {
             let effectiveSpeed;
-            if (speedBoost === 0) {
+            if (uniformity === 1) {
                 // Uniform speed - all columns move at the same speed
                 effectiveSpeed = scrollSpeed;
             } else {
-                // Use individual column speeds with boost factor
-                effectiveSpeed = scrollSpeed * individualColumnSpeeds[i] * speedBoost;
+                // Blend between individual speeds and uniform speed based on uniformity
+                let individualSpeed = scrollSpeed * individualColumnSpeeds[i];
+                let uniformSpeed = scrollSpeed;
+                effectiveSpeed = individualSpeed * (1 - uniformity) + uniformSpeed * uniformity;
             }
             columnOffsets[i] += effectiveSpeed;
         }
