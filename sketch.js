@@ -6,6 +6,7 @@ let controlPanelOpen = false;
 let isFirstSelection = true;
 let tabPressed = false; // Track if space has been pressed to remove the label
 let selectedFolders = []; // Track multiple selected folders
+let folderFileMap = new Map(); // Map folder names to their files
 
 // Einfache Variablen für automatisches Scrolling
 let allMediaFiles = [];
@@ -97,6 +98,9 @@ function setup() {
         }
     });
     
+    // Make deleteFolder function globally available
+    window.deleteFolder = deleteFolder;
+    
     console.log("SETUP: p5.js Sketch initialisiert. Bitte Videos auswählen.");
 }
 
@@ -161,7 +165,7 @@ function createControlPanel() {
     addMoreButton.mousePressed(showAdditionalFolderSelector);
     
     // Status display
-    let folderStatus = createDiv('Kein Ordner ausgewählt').addClass('folder-status').parent(fileGroup).id('folder-status');
+    let folderStatus = createDiv('').addClass('folder-status').parent(fileGroup).id('folder-status');
     folderStatus.style('font-size', '12px');
     folderStatus.style('color', '#999');
     folderStatus.style('margin-top', '5px');
@@ -405,6 +409,7 @@ function clearAllVideos() {
     
     allMediaFiles = []; mediaItems = [];
     selectedFolders = []; // Reset folder tracking
+    folderFileMap.clear(); // Clear folder-file mapping
     scrollOffset = 0; totalContentHeight = 0;
     columnHeights = new Array(columnCount).fill(0);
     columnOffsets = new Array(columnCount).fill(0); // Reset column offsets
@@ -438,7 +443,16 @@ function handleFileProcessing(selectedFileOrArray) {
         // Extract folder name from the first file for display
         let folderPath = filesReceived[0].webkitRelativePath || filesReceived[0].name;
         let folderName = folderPath.split('/')[0] || 'Unknown Folder';
-        selectedFolders.push(folderName);
+        
+        // Only add folder to selectedFolders if it's not already there
+        if (!selectedFolders.includes(folderName)) {
+            selectedFolders.push(folderName);
+        }
+        
+        // Track which files belong to this folder
+        if (!folderFileMap.has(folderName)) {
+            folderFileMap.set(folderName, []);
+        }
         
         let newUniqueFiles = filesReceived.filter(f_new =>
             !allMediaFiles.some(f_existing => f_existing.name === f_new.name && f_existing.size === f_new.size)
@@ -446,6 +460,8 @@ function handleFileProcessing(selectedFileOrArray) {
 
         if (newUniqueFiles.length > 0) {
             allMediaFiles.push(...newUniqueFiles);
+            // Add files to folder mapping
+            folderFileMap.get(folderName).push(...newUniqueFiles);
             console.log(`FILE_PROCESSING: Erstelle ${newUniqueFiles.length} neue Media-Items.`);
             newUniqueFiles.forEach(file => createMediaItem(file));
             updateContainerHeight(); // Single call after all new items are processed and their estimated heights added
@@ -1179,7 +1195,16 @@ function handleAdditionalFolders(selectedFileOrArray) {
         // Extract folder name from the first file for display
         let folderPath = filesReceived[0].webkitRelativePath || filesReceived[0].name;
         let folderName = folderPath.split('/')[0] || 'Unknown Folder';
-        selectedFolders.push(folderName);
+        
+        // Only add folder to selectedFolders if it's not already there
+        if (!selectedFolders.includes(folderName)) {
+            selectedFolders.push(folderName);
+        }
+        
+        // Track which files belong to this folder
+        if (!folderFileMap.has(folderName)) {
+            folderFileMap.set(folderName, []);
+        }
         
         // Add unique files to existing collection
         let newUniqueFiles = filesReceived.filter(f_new =>
@@ -1188,6 +1213,8 @@ function handleAdditionalFolders(selectedFileOrArray) {
 
         if (newUniqueFiles.length > 0) {
             allMediaFiles.push(...newUniqueFiles);
+            // Add files to folder mapping
+            folderFileMap.get(folderName).push(...newUniqueFiles);
             console.log(`ADDITIONAL_FOLDERS: Erstelle ${newUniqueFiles.length} neue Media-Items.`);
             newUniqueFiles.forEach(file => createMediaItem(file));
             updateContainerHeight();
@@ -1204,14 +1231,100 @@ function updateFolderStatus() {
     let statusElement = select('#folder-status');
     let addMoreButton = select('#add-more-button');
     
+    if (!statusElement) return;
+    
     if (selectedFolders.length === 0) {
-        if (statusElement) statusElement.html('Kein Ordner ausgewählt');
+        statusElement.html('Kein Ordner ausgewählt');
         if (addMoreButton) addMoreButton.style('display', 'none');
-    } else if (selectedFolders.length === 1) {
-        if (statusElement) statusElement.html(`Ordner: ${selectedFolders[0]} (${allMediaFiles.length} Dateien)`);
-        if (addMoreButton) addMoreButton.style('display', 'block');
     } else {
-        if (statusElement) statusElement.html(`${selectedFolders.length} Ordner (${allMediaFiles.length} Dateien)`);
+        // Create a container for folder list
+        let folderListHtml = '<div class="folder-list">';
+        let totalFiles = allMediaFiles.length;
+        
+        if (selectedFolders.length === 1) {
+            folderListHtml += `<div class="folder-summary">Ordner: ${selectedFolders[0]} (${totalFiles} Dateien)</div>`;
+        } else {
+            folderListHtml += `<div class="folder-summary">${selectedFolders.length} Ordner (${totalFiles} Dateien)</div>`;
+        }
+        
+        // Add individual folder entries with delete buttons - use unique folders from folderFileMap
+        Array.from(folderFileMap.keys()).forEach(folderName => {
+            let folderFiles = folderFileMap.get(folderName) || [];
+            folderListHtml += `
+                <div class="folder-item" style="display: flex; justify-content: space-between; align-items: center; margin: 2px 0; padding: 2px 4px; background: rgba(255,255,255,0.1); border-radius: 3px;">
+                    <span style="font-size: 11px;">${folderName} (${folderFiles.length} Dateien)</span>
+                    <button onclick="deleteFolder('${folderName}')" style="background: #ff4444; color: white; border: none; border-radius: 2px; padding: 1px 4px; font-size: 10px; cursor: pointer;">✕</button>
+                </div>
+            `;
+        });
+        
+        folderListHtml += '</div>';
+        statusElement.html(folderListHtml);
+        
         if (addMoreButton) addMoreButton.style('display', 'block');
     }
+}
+
+function deleteFolder(folderName) {
+    console.log(`DELETE_FOLDER: Deleting folder "${folderName}"`);
+    
+    // Find files belonging to this folder
+    let folderFiles = folderFileMap.get(folderName) || [];
+    
+    if (folderFiles.length === 0) {
+        console.log(`DELETE_FOLDER: No files found for folder "${folderName}"`);
+        return;
+    }
+    
+    // Remove media items associated with this folder's files
+    let itemsToRemove = [];
+    mediaItems.forEach(item => {
+        if (folderFiles.some(file => file.name === item.file.name && file.size === item.file.size)) {
+            itemsToRemove.push(item);
+        }
+    });
+    
+    // Clean up and remove the items
+    itemsToRemove.forEach(item => {
+        cleanupItemAudio(item);
+        if (item.domElement) item.domElement.remove();
+        if (item.objectURL) URL.revokeObjectURL(item.objectURL);
+        
+        // Remove from mediaItems array
+        let itemIndex = mediaItems.indexOf(item);
+        if (itemIndex > -1) {
+            mediaItems.splice(itemIndex, 1);
+        }
+    });
+    
+    // Remove files from allMediaFiles array
+    folderFiles.forEach(folderFile => {
+        let fileIndex = allMediaFiles.findIndex(file => 
+            file.name === folderFile.name && file.size === folderFile.size
+        );
+        if (fileIndex > -1) {
+            allMediaFiles.splice(fileIndex, 1);
+        }
+    });
+    
+    // Remove from folder tracking
+    let folderIndex = selectedFolders.indexOf(folderName);
+    if (folderIndex > -1) {
+        selectedFolders.splice(folderIndex, 1);
+    }
+    folderFileMap.delete(folderName);
+    
+    // Recalculate layout if there are remaining items
+    if (mediaItems.length > 0) {
+        recalculateLayout();
+    } else {
+        // If no items left, reset everything
+        columnHeights = new Array(columnCount).fill(0);
+        columnOffsets = new Array(columnCount).fill(0);
+        totalContentHeight = 0;
+        if (videoContainerElement) videoContainerElement.style.height = '0px';
+    }
+    
+    updateFolderStatus();
+    console.log(`DELETE_FOLDER: Folder "${folderName}" deleted. Removed ${itemsToRemove.length} items.`);
 }
