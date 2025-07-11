@@ -634,7 +634,6 @@ function applyAudioPanning(item) {
                 // Element has audio tracks, safe to create audio source
                 item.audioSource = globalAudioContext.createMediaElementSource(item.mediaElement);
             } else {
-                // No audio tracks, skip audio processing for this element
                 return;
             }
             item.stereoPanner = globalAudioContext.createStereoPanner();
