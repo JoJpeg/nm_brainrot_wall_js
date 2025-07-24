@@ -18,9 +18,8 @@ body {
 }
 
 #video-container-wrapper {
-    width: 95%; /* Etwas breiter für mehr Platz */
+    width: 100%; /* Etwas breiter für mehr Platz */
     max-width: 1800px;
-    margin: 5px auto; /* This creates the space around your main content area */
 }
 
 /* Das Masonry-Grid (#video-container in your JS) */
