@@ -4,6 +4,7 @@
 *Kunsthochschule Kassel*
 
 A dynamic, auto-scrolling video wall installation that creates an infinite, hypnotic stream of media content with spatial audio.
+Most of the code - aswell as documentation is written by AI and only supervised by a human. `¯\_(ツ)_/¯`
 
 ![Brainrot Wall Preview](https://img.shields.io/badge/Status-Exhibition%20Ready-brightgreen)
 
